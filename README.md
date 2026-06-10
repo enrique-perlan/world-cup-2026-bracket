@@ -2,7 +2,7 @@
 
 A single-file, zero-dependency web app for predicting the entire FIFA World Cup 2026 (48 teams, June 11 – July 19). Rank every group, pick the 8 best third-place teams, score every knockout game, and export a shareable poster + full wall chart.
 
-**[▶️ Play it live](https://enrique-perlan.github.io/world-cup-2026-bracket/)**
+**[▶️ Play it live](https://world-cup-2026-bracket-two.vercel.app)** · [GitHub Pages mirror](https://enrique-perlan.github.io/world-cup-2026-bracket/)
 
 ## Features
 
