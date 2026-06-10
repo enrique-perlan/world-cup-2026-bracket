@@ -312,7 +312,7 @@ section{display:none;} section.show{display:block; animation:fadein .25s ease;}
       <li><b>Groups</b> — in each group, tap teams in the order they finish: 1st, 2nd, 3rd.</li>
       <li><b>Best 3rds</b> — pick the 8 third-place teams that sneak through. I place them in the bracket for you.</li>
       <li><b>Bracket</b> — type the score of every knockout game. Higher score goes through. Ties go to penalties — you pick.</li>
-      <li><b>Snapshot</b> — put your name on it, save the picture, and challenge your friends.</li>
+      <li><b>Snapshot</b> — put your name on it. Your poster + wall chart save to a shared gallery everyone can browse, and you can download your own to challenge your friends.</li>
     </ol>
     <p>No football knowledge needed. If you can tap, you can play. 🍀</p>
     <p>🛟 <b>Safe to explore:</b> switching steps, the ☀️/🌙 theme or this help window never deletes anything. Only the red Reset button wipes your picks — and it always asks "are you sure?" first.</p>
@@ -607,7 +607,7 @@ function coach(){
       : `Type the score of each game with <b>＋ / −</b>. Higher score advances automatically. If it's a tie, you pick the <b>penalty shoot-out winner</b>. Work left to right through the rounds.`;
   }
   if(curStep===3){ say.innerHTML=`Almost done. A few <b>bonus bragging-rights picks</b> — totally optional, totally fun.`; }
-  if(curStep===4){ say.innerHTML=`Put a <b>name</b> on it and generate the snapshot — you get a <b>poster</b> and a <b>full wall chart</b>. Both auto-save to the 🖼️ Gallery (top right) so the whole team's picks live in one place. Receipts for July. 🧾`; }
+  if(curStep===4){ say.innerHTML=`Put a <b>name</b> on it and generate the snapshot — you get a <b>poster</b> and a <b>full wall chart</b>. They save to the shared 🖼️ Gallery (top right), so <b>everyone who plays</b> can see each other's picks from any device. Receipts for July. 🧾`; }
 }
 
 /* ---------------- groups UI ---------------- */
@@ -1130,16 +1130,53 @@ function drawWallChart(name){
   return cv.toDataURL("image/png");
 }
 
-/* -------- generate + gallery -------- */
+/* -------- generate + shared gallery (Supabase) -------- */
+const SB_URL="https://ykxbcwokteambpxpbrxu.supabase.co";
+const SB_KEY="sb_publishable_dfiswEomyPPXw4l2umhzLA_QwosgkWk";
+const SB_HEADERS={apikey:SB_KEY, Authorization:"Bearer "+SB_KEY};
 let GALLERY=[];
 function safe(s){return s.replace(/[^\w\-]+/g,"_");}
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
-function makeSnapshot(){
+function uid(){
+  if(crypto.randomUUID) return crypto.randomUUID();
+  const a=new Uint8Array(16); crypto.getRandomValues(a);
+  return [...a].map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+function dataURLtoBlob(d){
+  const [meta,b64]=d.split(","); const bin=atob(b64); const u8=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
+  return new Blob([u8],{type:(meta.match(/:(.*?);/)||[])[1]||"image/png"});
+}
+async function sbUpload(path,blob){
+  const r=await fetch(`${SB_URL}/storage/v1/object/wc26/${path}`,
+    {method:"POST", headers:{...SB_HEADERS,"Content-Type":"image/png"}, body:blob});
+  if(!r.ok) throw new Error("upload "+r.status);
+  return `${SB_URL}/storage/v1/object/public/wc26/${path}`;
+}
+async function sbInsert(row){
+  const r=await fetch(`${SB_URL}/rest/v1/wc26_predictions`,
+    {method:"POST", headers:{...SB_HEADERS,"Content-Type":"application/json",Prefer:"return=minimal"}, body:JSON.stringify(row)});
+  if(!r.ok) throw new Error("insert "+r.status);
+}
+async function sbList(){
+  const r=await fetch(`${SB_URL}/rest/v1/wc26_predictions?select=name,champion,champion_flag,runner_up,bronze,poster_url,chart_url,created_at&order=created_at.desc`,{headers:SB_HEADERS});
+  if(!r.ok) throw new Error("list "+r.status);
+  return r.json();
+}
+function fmtWhen(iso){ try{ const d=new Date(iso); return d.toLocaleDateString([],{day:"numeric",month:"short"})+" "+d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}); }catch(e){ return ""; } }
+async function dl(url,filename){
+  try{
+    const r=await fetch(url); const b=await r.blob(); const u=URL.createObjectURL(b);
+    const a=document.createElement("a"); a.href=u; a.download=filename;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(u),1500);
+  }catch(e){ window.open(url,"_blank"); }
+}
+
+async function makeSnapshot(){
   const name=(($("#snapName").value)||"").trim()||"My";
   const c=champion(); if(!c) return;
   const poster=drawPoster(name);
   const chart=drawWallChart(name);
-  GALLERY.push({name, when:new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}), poster, chart, champ:c.flag+" "+c.name});
   const out=$("#snapout");
   out.innerHTML=`
    <div class="snapblock"><h4>📜 Snapshot 1 — the poster (great for phones &amp; chats)</h4>
@@ -1148,32 +1185,58 @@ function makeSnapshot(){
    <div class="snapblock"><h4>🗺️ Snapshot 2 — the full wall chart (best on a computer / printed)</h4>
      <img class="chart" src="${chart}" alt="full wall chart"><br>
      <a class="btn primary dlbtn" download="WC2026-${safe(name)}-wallchart.png" href="${chart}">⬇️ Save wall chart</a></div>
-   <p class="hint" style="text-align:center">Both pictures were also added to the 🖼️ <b>Gallery</b> (top-right) — but the gallery only lives while this window is open, so download to keep them forever.</p>`;
+   <p class="hint" id="saveStatus" style="text-align:center">⏳ Saving to the shared gallery so everyone can see it…</p>`;
   fireConfetti();
-}
-function openGallery(){
-  const box=$("#galContent");
-  if(!GALLERY.length){
-    box.innerHTML=`<div class="gal-empty">No snapshots yet.<br>Finish a bracket, generate a snapshot in step 5, and every player's picture collects here — perfect for comparing the whole team's picks.</div>`;
-  }else{
-    box.innerHTML=`<div class="gal-grid">`+GALLERY.map((g,i)=>`
-      <div class="gal-card" onclick="viewSnap(${i})">
-        <img src="${g.poster}" alt="">
-        <div class="gname">${esc(g.name)}</div>
-        <div class="gsub">${g.champ} · ${g.when}</div>
-      </div>`).join("")+`</div>
-      <p class="hint" style="text-align:center">Tap a card to open it big. The gallery clears if this window reloads — downloads are forever.</p>`;
+  const finT=matchTeams(MBY.FIN);
+  const ru=(finT[0].g===c.g&&finT[0].i===c.i)?finT[1]:finT[0];
+  const brzR=matchResult(MBY.BRZ);
+  try{
+    const id=uid();
+    const [posterUrl,chartUrl]=await Promise.all([
+      sbUpload(`${id}/poster.png`, dataURLtoBlob(poster)),
+      sbUpload(`${id}/chart.png`, dataURLtoBlob(chart)),
+    ]);
+    await sbInsert({
+      name, champion:c.name, champion_flag:c.flag,
+      runner_up: ru?`${ru.flag} ${ru.name}`:null,
+      bronze: brzR?`${brzR.winner.flag} ${brzR.winner.name}`:null,
+      picks:{ranks:state.ranks, thirds:state.thirds, thirdMap:state.thirdMap, ko:state.ko},
+      extras: state.extras,
+      poster_url:posterUrl, chart_url:chartUrl,
+    });
+    const st=$("#saveStatus");
+    if(st) st.innerHTML=`✅ <b>Saved!</b> ${esc(name)}'s prediction is now in the shared 🖼️ <b>Gallery</b> (top-right) for everyone to see. The downloads above are yours to keep too.`;
+  }catch(e){
+    const st=$("#saveStatus");
+    if(st) st.innerHTML=`⚠️ Couldn't reach the shared gallery (you might be offline). Your pictures are still right here — <b>download them above</b>, or hit generate again later to save them online.`;
   }
+}
+async function openGallery(){
+  const box=$("#galContent");
+  box.innerHTML=`<div class="gal-empty">⏳ Loading everyone's predictions…</div>`;
   $("#gallery").classList.remove("hidden");
+  try{ GALLERY=await sbList(); }
+  catch(e){ box.innerHTML=`<div class="gal-empty">⚠️ Couldn't load the shared gallery.<br>Check your connection and tap 🖼️ again.</div>`; return; }
+  if(!GALLERY.length){
+    box.innerHTML=`<div class="gal-empty">No predictions saved yet.<br>Be the first! Finish your bracket, generate a snapshot in step 5, and everyone who plays will show up here.</div>`;
+    return;
+  }
+  box.innerHTML=`<p class="hint" style="margin-top:0">🌍 <b>${GALLERY.length}</b> prediction${GALLERY.length>1?"s":""} from everyone who's played. Tap any card to open it full-size and download.</p>
+    <div class="gal-grid">`+GALLERY.map((g,i)=>`
+      <div class="gal-card" onclick="viewSnap(${i})">
+        <img src="${g.poster_url}" alt="" loading="lazy">
+        <div class="gname">${esc(g.name)}</div>
+        <div class="gsub">${esc(g.champion_flag||"")} ${esc(g.champion)} · ${fmtWhen(g.created_at)}</div>
+      </div>`).join("")+`</div>`;
 }
 function viewSnap(i){
   const g=GALLERY[i];
   $("#galContent").innerHTML=`
-    <button class="btn ghosty" onclick="openGallery()" style="margin-bottom:12px">← All snapshots</button>
-    <div class="snapblock"><h4>${esc(g.name)} — poster</h4><img src="${g.poster}" alt=""><br>
-      <a class="btn primary dlbtn" download="WC2026-${safe(g.name)}-poster.png" href="${g.poster}">⬇️ Save poster</a></div>
-    <div class="snapblock"><h4>${esc(g.name)} — full wall chart</h4><img class="chart" src="${g.chart}" alt=""><br>
-      <a class="btn primary dlbtn" download="WC2026-${safe(g.name)}-wallchart.png" href="${g.chart}">⬇️ Save wall chart</a></div>`;
+    <button class="btn ghosty" onclick="openGallery()" style="margin-bottom:12px">← All predictions</button>
+    <div class="snapblock"><h4>${esc(g.name)} — poster</h4><img src="${g.poster_url}" alt=""><br>
+      <a class="btn primary dlbtn" href="${g.poster_url}" onclick="dl('${g.poster_url}','WC2026-${safe(g.name)}-poster.png');return false">⬇️ Save poster</a></div>
+    <div class="snapblock"><h4>${esc(g.name)} — full wall chart</h4><img class="chart" src="${g.chart_url}" alt=""><br>
+      <a class="btn primary dlbtn" href="${g.chart_url}" onclick="dl('${g.chart_url}','WC2026-${safe(g.name)}-wallchart.png');return false">⬇️ Save wall chart</a></div>`;
 }
 function closeGallery(){ $("#gallery").classList.add("hidden"); }
 
