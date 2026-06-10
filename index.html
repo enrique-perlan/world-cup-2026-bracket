@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>World Cup 2026 — Bracket Predictor</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚽</text></svg>">
 <style>
 :root{
   --bg:#0C120E; --card:#141D16; --card2:#0F1711; --line:#26352B;
@@ -283,7 +284,7 @@ section{display:none;} section.show{display:block; animation:fadein .25s ease;}
 
 <canvas id="confetti"></canvas>
 
-<div class="overlay hidden" id="confirmbox" onclick="if(event.target===this)confirmAnswer(false)">
+<div class="overlay hidden" id="confirmbox" role="dialog" aria-modal="true" aria-labelledby="confirmTitle" onclick="if(event.target===this)confirmAnswer(false)">
   <div class="modal">
     <h2 id="confirmTitle" style="font-size:21px">Are you sure?</h2>
     <p class="confirm-msg" id="confirmMsg"></p>
@@ -294,7 +295,7 @@ section{display:none;} section.show{display:block; animation:fadein .25s ease;}
   </div>
 </div>
 
-<div class="overlay hidden" id="gallery" onclick="if(event.target===this)closeGallery()">
+<div class="overlay hidden" id="gallery" role="dialog" aria-modal="true" aria-label="Snapshot gallery" onclick="if(event.target===this)closeGallery()">
   <div class="modal wide">
     <button class="modalx" aria-label="Close gallery" onclick="closeGallery()">✕</button>
     <h2 style="font-size:22px">🖼️ Snapshot <span class="y">gallery</span></h2>
@@ -302,7 +303,7 @@ section{display:none;} section.show{display:block; animation:fadein .25s ease;}
   </div>
 </div>
 
-<div class="overlay" id="intro" onclick="if(event.target===this)closeIntro()">
+<div class="overlay" id="intro" role="dialog" aria-modal="true" aria-label="How to play" onclick="if(event.target===this)closeIntro()">
   <div class="modal">
     <button class="modalx" aria-label="Close" onclick="closeIntro()">✕</button>
     <div class="bunting">🇨🇦 🏆 🇺🇸 🏆 🇲🇽</div>
@@ -322,9 +323,9 @@ section{display:none;} section.show{display:block; animation:fadein .25s ease;}
 
 <header>
   <div class="tools">
-    <button class="iconbtn" id="themeBtn" title="Light / dark" onclick="toggleTheme()">☀️</button>
-    <button class="iconbtn" title="Snapshot gallery" onclick="openGallery()">🖼️</button>
-    <button class="iconbtn" title="How to play" onclick="document.getElementById('intro').classList.remove('hidden')">❓</button>
+    <button class="iconbtn" id="themeBtn" title="Light / dark" aria-label="Toggle light or dark theme" aria-pressed="false" onclick="toggleTheme()">☀️</button>
+    <button class="iconbtn" title="Snapshot gallery" aria-label="Open snapshot gallery" onclick="openGallery()">🖼️</button>
+    <button class="iconbtn" title="How to play" aria-label="How to play" onclick="document.getElementById('intro').classList.remove('hidden')">❓</button>
   </div>
   <div class="bunting">🇨🇦 ⚽ 🇺🇸 ⚽ 🇲🇽</div>
   <h1>World Cup <span class="y">2026</span></h1>
@@ -556,7 +557,7 @@ function stepUnlocked(i){
   if(i===0) return true;
   if(i===1) return allGroupsDone();
   if(i===2) return allGroupsDone() && state.thirds.length===8;
-  if(i===3) return stepUnlocked(2) && !!champion();
+  if(i===3) return stepUnlocked(2) && roundComplete(4);
   if(i===4) return stepUnlocked(3);
   return false;
 }
@@ -568,9 +569,9 @@ function goStep(i){
 }
 function nudge(i){
   const say=$("#coachSay");
-  if(i===1||i===2 && !allGroupsDone()){ say.innerHTML="⛔ Finish ranking <b>all 12 groups</b> first — tap 1st, 2nd and 3rd in every group."; }
-  if(i===2 && allGroupsDone() && state.thirds.length!==8){ say.innerHTML="⛔ Pick exactly <b>8</b> third-place teams to continue."; }
-  if(i===3 || i===4){ say.innerHTML="⛔ Decide the <b>Final</b> first — fill scores all the way through the bracket."; }
+  if(!allGroupsDone()){ say.innerHTML="⛔ Finish ranking <b>all 12 groups</b> first — tap 1st, 2nd and 3rd in every group."; }
+  else if(state.thirds.length!==8){ say.innerHTML="⛔ Pick exactly <b>8</b> third-place teams to continue."; }
+  else { say.innerHTML="⛔ Finish the bracket — fill scores through the <b>Final</b> and the <b>🥉 Bronze</b> match."; }
   say.animate?.([{transform:'translateX(0)'},{transform:'translateX(-5px)'},{transform:'translateX(5px)'},{transform:'translateX(0)'}],{duration:250});
 }
 function renderStepbar(){
@@ -602,8 +603,10 @@ function coach(){
       : `Locked! ✅ I've slotted each one into the official bracket below. Ready to build your Round of 32?`;
   }
   if(curStep===2){
-    say.innerHTML = champion()
-      ? `You have a champion! 🏆 Review any round, or move on to bonus picks.`
+    say.innerHTML = roundComplete(4)
+      ? `Your podium is set! 🏆 Review any round, or move on to bonus picks.`
+      : champion()
+      ? `Champion decided! 🏆 One last call — score the <b>🥉 Bronze</b> match (3rd place) to unlock the bonus picks.`
       : `Type the score of each game with <b>＋ / −</b>. Higher score advances automatically. If it's a tie, you pick the <b>penalty shoot-out winner</b>. Work left to right through the rounds.`;
   }
   if(curStep===3){ say.innerHTML=`Almost done. A few <b>bonus bragging-rights picks</b> — totally optional, totally fun.`; }
@@ -679,7 +682,6 @@ function flyToSlot(g,i,ri){
 }
 
 /* press & hold drag (mobile-safe: quick tap still ranks; hold 220ms drags) */
-let drag=null;
 function bindChipGestures(){
   document.querySelectorAll("#groupgrid .chip").forEach(chip=>{
     chip.onpointerdown=e=>{
@@ -694,7 +696,9 @@ function bindChipGestures(){
         ghost.style.left=e.clientX+"px"; ghost.style.top=e.clientY+"px";
         document.body.appendChild(ghost);
         chip.style.opacity=.3;
-        document.querySelectorAll(`.slot[data-g="${g}"]`).forEach(s=>s.classList.add("hot"));
+        const nf=Math.min(state.ranks[g].filter(x=>x!==i).length,2);
+        const hotSlot=document.querySelector(`.slot[data-g="${g}"][data-r="${nf}"]`);
+        if(hotSlot) hotSlot.classList.add("hot");
         if(navigator.vibrate) navigator.vibrate(10);
       },220);
       const move=ev=>{
@@ -895,7 +899,7 @@ function renderExtras(){
 document.addEventListener("input",e=>{
   if(e.target.id==="exScorer")state.extras.scorer=e.target.value;
   if(e.target.id==="exBall")state.extras.ball=e.target.value;
-  if(e.target.id==="exGoals")state.extras.goals=e.target.value;
+  if(e.target.id==="exGoals"){ const cl=e.target.value.replace(/\D/g,""); if(cl!==e.target.value)e.target.value=cl; state.extras.goals=cl; }
 });
 
 /* ============== SNAPSHOTS (poster + wall chart) ============== */
@@ -967,7 +971,8 @@ function drawPoster(name){
   const ru=(finT[0].g===c.g&&finT[0].i===c.i)?finT[1]:finT[0];
   const brzR=matchResult(MBY.BRZ);
   x.fillStyle=C.ink; x.font=`700 32px ${FAM}`; x.textAlign="center";
-  x.fillText(`🥈 ${ru.flag} ${ru.name}     🥉 ${brzR.winner.flag} ${brzR.winner.name}`,W/2,838);
+  const brzTxt = brzR ? `     🥉 ${brzR.winner.flag} ${brzR.winner.name}` : "";
+  x.fillText(`🥈 ${ru.flag} ${ru.name}${brzTxt}`,W/2,838);
   hr(x,C,876,W);
   x.fillStyle=C.gold; x.font=`900 30px ${FAM}`; x.fillText("THE ROAD — EVERY KNOCKOUT CALL",W/2,928);
   const colX=[70,560], colW=450;
@@ -1137,6 +1142,7 @@ const SB_HEADERS={apikey:SB_KEY, Authorization:"Bearer "+SB_KEY};
 let GALLERY=[];
 function safe(s){return s.replace(/[^\w\-]+/g,"_");}
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
+function safeUrl(u){ u=String(u||""); return u.startsWith(SB_URL+"/storage/v1/object/public/wc26/") ? u : ""; }
 function uid(){
   if(crypto.randomUUID) return crypto.randomUUID();
   const a=new Uint8Array(16); crypto.getRandomValues(a);
@@ -1159,7 +1165,7 @@ async function sbInsert(row){
   if(!r.ok) throw new Error("insert "+r.status);
 }
 async function sbList(){
-  const r=await fetch(`${SB_URL}/rest/v1/wc26_predictions?select=name,champion,champion_flag,runner_up,bronze,poster_url,chart_url,created_at&order=created_at.desc`,{headers:SB_HEADERS});
+  const r=await fetch(`${SB_URL}/rest/v1/wc26_predictions?select=name,champion,champion_flag,runner_up,bronze,poster_url,chart_url,created_at&order=created_at.desc&limit=200`,{headers:SB_HEADERS});
   if(!r.ok) throw new Error("list "+r.status);
   return r.json();
 }
@@ -1175,8 +1181,9 @@ async function dl(url,filename){
 async function makeSnapshot(){
   const name=(($("#snapName").value)||"").trim()||"My";
   const c=champion(); if(!c) return;
-  const poster=drawPoster(name);
-  const chart=drawWallChart(name);
+  let poster, chart;
+  try{ poster=drawPoster(name); chart=drawWallChart(name); }
+  catch(e){ $("#snapout").innerHTML=`<p class="hint" style="text-align:center">⚠️ Couldn't draw your snapshot — make sure every match (including the 🥉 Bronze game) has a result, then try again.</p>`; return; }
   const out=$("#snapout");
   out.innerHTML=`
    <div class="snapblock"><h4>📜 Snapshot 1 — the poster (great for phones &amp; chats)</h4>
@@ -1224,19 +1231,25 @@ async function openGallery(){
   box.innerHTML=`<p class="hint" style="margin-top:0">🌍 <b>${GALLERY.length}</b> prediction${GALLERY.length>1?"s":""} from everyone who's played. Tap any card to open it full-size and download.</p>
     <div class="gal-grid">`+GALLERY.map((g,i)=>`
       <div class="gal-card" onclick="viewSnap(${i})">
-        <img src="${g.poster_url}" alt="" loading="lazy">
+        <img src="${esc(safeUrl(g.poster_url))}" alt="" loading="lazy">
         <div class="gname">${esc(g.name)}</div>
         <div class="gsub">${esc(g.champion_flag||"")} ${esc(g.champion)} · ${fmtWhen(g.created_at)}</div>
       </div>`).join("")+`</div>`;
 }
 function viewSnap(i){
-  const g=GALLERY[i];
+  const g=GALLERY[i]; if(!g) return;
+  const p=esc(safeUrl(g.poster_url)), c=esc(safeUrl(g.chart_url));
   $("#galContent").innerHTML=`
     <button class="btn ghosty" onclick="openGallery()" style="margin-bottom:12px">← All predictions</button>
-    <div class="snapblock"><h4>${esc(g.name)} — poster</h4><img src="${g.poster_url}" alt=""><br>
-      <a class="btn primary dlbtn" href="${g.poster_url}" onclick="dl('${g.poster_url}','WC2026-${safe(g.name)}-poster.png');return false">⬇️ Save poster</a></div>
-    <div class="snapblock"><h4>${esc(g.name)} — full wall chart</h4><img class="chart" src="${g.chart_url}" alt=""><br>
-      <a class="btn primary dlbtn" href="${g.chart_url}" onclick="dl('${g.chart_url}','WC2026-${safe(g.name)}-wallchart.png');return false">⬇️ Save wall chart</a></div>`;
+    <div class="snapblock"><h4>${esc(g.name)} — poster</h4><img src="${p}" alt=""><br>
+      <a class="btn primary dlbtn" href="${p}" onclick="dlSnap(${i},'poster');return false">⬇️ Save poster</a></div>
+    <div class="snapblock"><h4>${esc(g.name)} — full wall chart</h4><img class="chart" src="${c}" alt=""><br>
+      <a class="btn primary dlbtn" href="${c}" onclick="dlSnap(${i},'chart');return false">⬇️ Save wall chart</a></div>`;
+}
+function dlSnap(i,kind){
+  const g=GALLERY[i]; if(!g) return;
+  const url=safeUrl(kind==='poster'?g.poster_url:g.chart_url); if(!url) return;
+  dl(url, `WC2026-${safe(g.name)}-${kind==='poster'?'poster':'wallchart'}.png`);
 }
 function closeGallery(){ $("#gallery").classList.add("hidden"); }
 
@@ -1264,7 +1277,7 @@ function resetAll(){
   askConfirm("Reset everything?",
     `This wipes <b>all group picks, the whole bracket and every score</b>, back to zero.<br><br>✅ Snapshots in the 🖼️ Gallery stay safe.<br>🛟 Just want to change one pick? No need to reset — go to any step and tap it again.`,
     "Yes — wipe it all",
-    ()=>{ state=freshState(); curStep=0; renderAll(); });
+    ()=>{ state=freshState(); curStep=0; $("#snapName").value=""; $("#snapout").innerHTML=""; renderAll(); });
 }
 
 /* ---------------- confetti ---------------- */
@@ -1289,8 +1302,19 @@ function toggleTheme(){
   const b=document.body;
   b.dataset.theme=b.dataset.theme==="dark"?"light":"dark";
   $("#themeBtn").textContent=b.dataset.theme==="dark"?"☀️":"🌙";
+  $("#themeBtn").setAttribute("aria-pressed", b.dataset.theme==="light");
+  try{ localStorage.setItem("wc26theme", b.dataset.theme); }catch(e){}
 }
 function closeIntro(){ document.getElementById("intro").classList.add("hidden"); }
+/* Escape closes the topmost open overlay */
+document.addEventListener("keydown",e=>{
+  if(e.key!=="Escape") return;
+  if(!$("#confirmbox").classList.contains("hidden")) confirmAnswer(false);
+  else if(!$("#gallery").classList.contains("hidden")) closeGallery();
+  else if(!$("#intro").classList.contains("hidden")) closeIntro();
+});
+/* restore saved theme */
+try{ const _t=localStorage.getItem("wc26theme"); if(_t){ document.body.dataset.theme=_t; $("#themeBtn").textContent=_t==="dark"?"☀️":"🌙"; $("#themeBtn").setAttribute("aria-pressed", _t==="light"); } }catch(e){}
 
 function renderAll(){
   renderStepbar(); coach();
